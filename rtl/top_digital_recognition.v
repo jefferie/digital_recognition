@@ -1,6 +1,6 @@
-// Descriptions:	OV5640 摄像头RGB TFT-LCD显示实验      
+// Descriptions:	OV5640 摄像头-基于几何特征的数字识别实验     
 //************************************************************//
-module ov5640_rgb565_lcd(
+module top_digital_recognition(
     input		  sys_clk	 ,	//系统时钟
     input		  sys_rst_n	 ,	//系统复位，低电平有效
 	//摄像头
@@ -27,10 +27,14 @@ module ov5640_rgb565_lcd(
 	output        lcd_hs     ,  //LCD 行同步信号
     output        lcd_vs     ,  //LCD 场同步信号
     output        lcd_de     ,  //LCD 数据输入使能
-    inout  [15:0] lcd_rgb    ,  //LCD RGB565颜色数据
+    output [15:0] lcd_rgb    ,  //LCD RGB565颜色数据
     output        lcd_bl     ,  //LCD 背光控制信号
     output        lcd_rst    ,  //LCD 复位信号
-    output        lcd_pclk      //LCD 采样时钟
+    output        lcd_pclk   ,   //LCD 采样时钟
+	
+	//seg led
+    output [5:0]    sel      ,  //数码管位选
+    output [7:0]    seg_led     //数码管段选
 );
 
 //parameter define
@@ -38,6 +42,18 @@ parameter SLAVE_ADDR = 7'h3c          ; //OV5640的器件地址7'h3c
 parameter BIT_CTRL   = 1'b1           ; //OV5640的字节地址为16位  0:8位 1:16位
 parameter CLK_FREQ   = 27'd100_000_000; //i2c_dri模块的驱动时钟频率 
 parameter I2C_FREQ   = 18'd250_000    ; //I2C的SCL时钟频率,不超过400KHz，配置250KHZ
+parameter NUM_ROW	 = 1'd1			  ; //需识别的图像的行数
+parameter NUM_COL    = 3'd4			  ; //需识别的图像的列数
+parameter H_PIXEL    = 480			  ; //图像的水平像素
+parameter V_PIXEL    = 272			  ; //图像的垂直像素
+parameter DEPBIT	 = 4'd10		  ; //数据位宽
+
+//LCD ID
+localparam  ID_4342 =   0;               //4寸屏幕，分辨率：480*272
+localparam  ID_7084 =   1;               //7寸屏幕，分辨率：800*480
+localparam  ID_7016 =   2;               //7寸屏幕，分辨率：1024*600
+localparam  ID_1018 =   5;               //10.1寸屏幕，分辨率：1280*800
+parameter   ID_LCD = ID_4342;            //对于不同的LCd屏幕修改，赋ID_LCD对应的值即可
 
 //wire define
 wire        clk_100m       ;  //100mhz时钟,SDRAM操作时钟
@@ -68,6 +84,15 @@ wire [12:0] cmos_v_pixel   ;  //CMOS垂直方向像素个数
 wire [12:0] total_h_pixel  ;  //水平总像素大小
 wire [12:0] total_v_pixel  ;  //垂直总像素大小
 wire [23:0] sdram_max_addr ;  //sdram读写的最大地址
+wire		clk_lcd_g	   ;
+wire [23:0]	digit		   ;
+wire [15:0]	color_rgb	   ;
+wire [10:0]	xpos		   ;
+wire [10:0]	ypos		   ;
+wire		hs_t		   ;
+wire		vs_t		   ;
+wire		de_t		   ;
+
 //*****************************************************
 //**                    main code
 //*****************************************************
@@ -89,41 +114,8 @@ pll u_pll(
     .c1                 (clk_100m_shift),
     .c2                 (clk_100m_lcd),
     .locked             (locked)
-    );
+);
 
-//例化LCD顶层模块
-lcd u_lcd(
-    .clk                (clk_100m_lcd),
-    .rst_n              (rst_n),
-                        
-    .lcd_hs             (lcd_hs),
-    .lcd_vs             (lcd_vs),
-    .lcd_de             (lcd_de),
-    .lcd_rgb            (lcd_rgb),
-    .lcd_bl             (lcd_bl),
-    .lcd_rst            (lcd_rst),
-    .lcd_pclk           (lcd_pclk),
-            
-    .pixel_data         (rd_data),
-    .rd_en              (rd_en),
-    .clk_lcd            (clk_lcd),          //LCD驱动时钟
-
-    .ID_lcd             (ID_lcd)            //LCD ID
-    );
-	
-//摄像头图像分辨率设置模块
-picture_size u_picture_size (
-    .rst_n              (rst_n),
-
-    .ID_lcd             (ID_lcd),           //LCD的ID，用于配置摄像头的图像大小
-                        
-    .cmos_h_pixel       (cmos_h_pixel  ),   //摄像头水平方向分辨率 
-    .cmos_v_pixel       (cmos_v_pixel  ),   //摄像头垂直方向分辨率  
-    .total_h_pixel      (total_h_pixel ),   //用于配置HTS寄存器
-    .total_v_pixel      (total_v_pixel ),   //用于配置VTS寄存器
-    .sdram_max_addr     (sdram_max_addr)    //sdram读写的最大地址
-    );
-	
 //I2C配置模块
 i2c_ov5640_rgb565_cfg u_i2c_cfg(
     .clk                (i2c_dri_clk),		//由i2c_dri输出的1MHZ时钟
@@ -181,6 +173,19 @@ cmos_capture_data u_cmos_capture_data(      //系统初始化完成之后再开�
     .cmos_frame_valid   (wr_en),            //数据有效使能信号
     .cmos_frame_data    (wr_data)           //有效数据 
     );
+
+//摄像头图像分辨率设置模块
+picture_size u_picture_size (
+    .rst_n              (rst_n),
+
+    .ID_lcd             (ID_LCD),           //LCD的ID，用于配置摄像头的图像大小
+                        
+    .cmos_h_pixel       (cmos_h_pixel  ),   //摄像头水平方向分辨率 
+    .cmos_v_pixel       (cmos_v_pixel  ),   //摄像头垂直方向分辨率  
+    .total_h_pixel      (total_h_pixel ),   //用于配置HTS寄存器
+    .total_v_pixel      (total_v_pixel ),   //用于配置VTS寄存器
+    .sdram_max_addr     (sdram_max_addr)    //sdram读写的最大地址
+    );
 	
 //SDRAM 控制器顶层模块,封装成FIFO接口
 //SDRAM 控制器地址组成: {bank_addr[1:0],row_addr[12:0],col_addr[8:0]}
@@ -224,5 +229,73 @@ sdram_top u_sdram_top(
     .sdram_data         (sdram_data),       //SDRAM 数据
     .sdram_dqm          (sdram_dqm)         //SDRAM 数据掩码
     );
+	
+//例化LCD顶层模块
+lcd u_lcd(
+    .clk                (clk_100m_lcd),
+    .rst_n              (rst_n),
+                        
+    .lcd_hs             (hs_t),
+    .lcd_vs             (vs_t),
+    .lcd_de             (de_t),
+    .lcd_rgb            (color_rgb),
+    .lcd_bl             (lcd_bl),
+    .lcd_rst            (lcd_rst),
+    .lcd_pclk           (lcd_pclk),
+            
+    .pixel_data         (rd_data),
+    .rd_en              (rd_en),
+    .clk_lcd            (clk_lcd),          //LCD驱动时钟
+
+    .ID_lcd             (ID_LCD),            //LCD ID
+	
+	//user interface
+    .pixel_xpos 		(xpos  ),
+    .pixel_ypos 		(ypos  )
+    );
+
+//例化全局时钟模块
+altclkctrl clk_ctrl(
+    .inclk(clk_lcd),
+    .outclk(clk_lcd_g)
+);
+
+//图像处理模块
+vip #(
+    .NUM_ROW(NUM_ROW),
+    .NUM_COL(NUM_COL),
+    .H_PIXEL(H_PIXEL),
+    .V_PIXEL(V_PIXEL)
+)u_vip(
+    //module clock
+    .clk              (clk_lcd_g),  // 时钟信号
+    .rst_n            (rst_n    ),  // 复位信号（低有效）
+    //图像处理前的数据接口
+    .pre_frame_vsync  (vs_t   ),
+    .pre_frame_hsync  (hs_t   ),
+    .pre_frame_de     (de_t   ),
+    .pre_rgb          (color_rgb),
+    .xpos             (xpos   ),
+    .ypos             (ypos   ),
+    //图像处理后的数据接口
+    .post_frame_vsync (lcd_vs ),  // 场同步信号
+    .post_frame_hsync (lcd_hs ),  // 行同步信号
+    .post_frame_de    (lcd_de ),  // 数据输入使能
+    .post_rgb         (lcd_rgb),  // RGB565颜色数据
+    //user interface
+    .digit            (digit  )   // 识别到的数字
+);
+
+//例化数码管驱动模块
+seg_bcd_dri u_seg_bcd_dri(
+   //input
+   .clk          (clk_lcd),       // 时钟信号
+   .rst_n        (rst_n  ),       // 复位信号
+   .num          (digit  ),       // 6个数码管要显示的数值
+   .point        (6'b0   ),       // 小数点具体显示的位置,从高到低,高有效
+   //output
+   .sel          (sel    ),       // 数码管位选
+   .seg_led      (seg_led)        // 数码管段选
+);
 
 endmodule
