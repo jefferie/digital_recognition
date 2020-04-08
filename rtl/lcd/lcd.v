@@ -17,7 +17,11 @@ module	lcd(
 	input		[15:0]	pixel_data	,   //像素点数据
 	output				rd_en		,   //请求像素点颜色数据输入 
 	                                    
-	output		[15:0]	ID_lcd		    //LCD的ID
+	input		[15:0]	ID_lcd		,    //LCD的ID
+	
+	//user interface
+	output		[10:0]	pixel_xpos,
+	output		[10:0]	pixel_ypos
 );
 
 //*****************************************************
@@ -28,14 +32,14 @@ module	lcd(
 assign lcd_rgb = lcd_de ? pixel_data : 16'dz;
 
 //读rgb lcd ID 模块
-rd_id    u_rd_id(
+/* rd_id    u_rd_id(
     .clk          (clk),
     .rst_n        (rst_n),
     
     .lcd_rgb      (lcd_rgb),
     .ID_lcd       (ID_lcd)
 
-);
+); */
 
 //分频模块，根据不同的LCD ID输出相应的频率的驱动时钟
 clk_div  u_clk_div(
@@ -59,8 +63,8 @@ lcd_driver u_lcd_driver(
     .lcd_pclk       (lcd_pclk),
     
     .data_req       (rd_en),                 //请求像素点颜色数据输入
-    .pixel_xpos     (), 
-    .pixel_ypos     (),
+    .pixel_xpos     (pixel_xpos), 
+    .pixel_ypos     (pixel_ypos),
     .ID_lcd         (ID_lcd)
     ); 
 

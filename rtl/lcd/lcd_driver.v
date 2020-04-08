@@ -103,8 +103,8 @@ assign lcd_pclk= lcd_clk;   //RGB LCD显示模块采样时钟
 
 //RGB LCD 采用数据输入使能信号同步时，行场同步信号需要拉高
 assign lcd_de = lcd_en;		//LCD输入的颜色数据采用数据输入使能信号同步
-assign lcd_hs = 1'b1;
-assign lcd_vs = 1'b1;
+assign lcd_hs = cnt_h >= h_sync;
+assign lcd_vs = cnt_v >= v_sync;
 
 //使能RGB565数据输出
 assign lcd_en	= (((cnt_h >= h_sync + h_back) && (cnt_h < h_sync + h_back + h_disp))
